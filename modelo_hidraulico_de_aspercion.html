@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Modelo Hidráulico - Aspersión</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f7fa;
+      color: #333;
+      margin: 0;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2a8;
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.2rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      margin-top: 2rem;
+      width: 100%;
+      padding: 1rem;
+      background-color: #2a8;
+      border: none;
+      color: white;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #267;
+    }
+    .results {
+      margin-top: 2rem;
+      background: #eaf5ee;
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    canvas {
+      display: block;
+      margin: 2rem auto;
+      background: #eef;
+      border: 1px solid #ccc;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Modelo Hidráulico de Aspersión</h1>
+    <label>Altura de subida (h1) [m]: <input type="number" id="h1" value="2"></label>
+    <label>Longitud horizontal (L) [m]: <input type="number" id="L" value="3"></label>
+    <label>Altura de bajada (h2) [m]: <input type="number" id="h2" value="1"></label>
+    <label>Diámetro interno de tubería (D) [mm]: <input type="number" id="D" value="25"></label>
+    <label>Caudal (Q) [L/s]: <input type="number" id="Q" value="1"></label>
+
+    <button onclick="calcularModelo()">Calcular Sistema</button>
+    <canvas id="grafico" width="600" height="300"></canvas>
+    <div class="results" id="resultados"></div>
+  </div>
+
+  <script>
+    function calcularModelo() {
+      const h1 = parseFloat(document.getElementById("h1").value);
+      const h2 = parseFloat(document.getElementById("h2").value);
+      const L = parseFloat(document.getElementById("L").value);
+      const Dmm = parseFloat(document.getElementById("D").value);
+      const Qls = parseFloat(document.getElementById("Q").value);
+
+      const D = Dmm / 1000; // m
+      const Q = Qls / 1000; // m3/s
+
+      const A = Math.PI * Math.pow(D / 2, 2); // m2
+      const v = Q / A; // velocidad m/s
+
+      const g = 9.81;
+      const rho = 1000; // kg/m3 para agua
+      const nu = 1e-6; // m2/s viscosidad cinemática agua
+
+      const Re = (v * D) / nu;
+      const flujo = Re < 2000 ? "Laminar" : Re < 4000 ? "Transicional" : "Turbulento";
+      const f = flujo === "Laminar" ? 64 / Re : 0.03; // estimado
+
+      const Hf = f * (L / D) * (v * v) / (2 * g); // pérdida de carga
+      const altura_total = h1 - h2 + Hf;
+      const presion_bomba = altura_total * rho * g / 100000; // en bar
+
+      document.getElementById("resultados").innerHTML = `
+        <h3>Recomendaciones para el Instalador:</h3>
+        <ul>
+          <li><strong>Use tubería de diámetro interno:</strong> ${Dmm} mm</li>
+          <li><strong>Área interna del tubo:</strong> ${A.toFixed(5)} m² (permite buen paso del fluido)</li>
+          <li><strong>Fluido circulará a:</strong> ${v.toFixed(2)} m/s (velocidad segura)</li>
+          <li><strong>Longitud horizontal:</strong> ${L} m</li>
+          <li><strong>Altura de subida:</strong> ${h1} m</li>
+          <li><strong>Altura de bajada:</strong> ${h2} m</li>
+          <li><strong>Altura total que debe vencer la bomba:</strong> ${altura_total.toFixed(2)} m</li>
+          <li><strong>Presión mínima que debe soportar la bomba:</strong> ${presion_bomba.toFixed(2)} bar</li>
+          <li><strong>Tipo de flujo:</strong> ${flujo}</li>
+        </ul>
+      `;
+
+      dibujarEsquema(h1, L, h2, Dmm);
+    }
+
+    function dibujarEsquema(h1, L, h2, Dmm) {
+      const canvas = document.getElementById("grafico");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const escala = 40; // pixeles por metro
+      const baseX = 80;
+      const baseY = canvas.height - 30;
+
+      ctx.strokeStyle = "#2a8";
+      ctx.lineWidth = Math.max(2, Dmm / 10); // ancho proporcional al diámetro
+
+      // Bomba
+      ctx.beginPath();
+      ctx.moveTo(baseX - 20, baseY);
+      ctx.lineTo(baseX + 20, baseY);
+      ctx.lineTo(baseX + 20, baseY - 20);
+      ctx.lineTo(baseX - 20, baseY - 20);
+      ctx.closePath();
+      ctx.fillStyle = "#2a8";
+      ctx.fill();
+
+      // Tubería (esquema)
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(baseX, baseY - h1 * escala);
+      ctx.lineTo(baseX + L * escala, baseY - h1 * escala);
+      ctx.lineTo(baseX + L * escala, baseY - (h1 - h2) * escala);
+      ctx.stroke();
+
+      // Texto descriptivo
+      ctx.fillStyle = "#000";
+      ctx.font = "14px Segoe UI";
+      ctx.fillText("Bomba", baseX - 18, baseY - 25);
+      ctx.fillText("↑ h1", baseX + 5, baseY - h1 * escala / 2);
+      ctx.fillText("→ L", baseX + L * escala / 2, baseY - h1 * escala - 5);
+      ctx.fillText("↓ h2", baseX + L * escala + 5, baseY - h1 * escala + h2 * escala / 2);
+    }
+  </script>
+</body>
+</html>
