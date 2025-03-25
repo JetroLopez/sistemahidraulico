@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Modelo Hidráulico - Aspersión</title>
+  <title>Modelo Hidráulico - Aspersión Mejorado</title>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -20,7 +20,7 @@
       border-radius: 12px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.1);
     }
-    h1 {
+    h1, h3 {
       color: #2a8;
       text-align: center;
     }
@@ -62,63 +62,115 @@
       border: 1px solid #ccc;
       border-radius: 12px;
     }
+    .detail {
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 1rem;
+    }
   </style>
 </head>
 <body>
+  <div style="text-align:center; font-size: 0.9rem; color: #666;">Autor: Jetro A Lopez (Mejorado)</div>
   <div class="container">
     <h1>Modelo Hidráulico de Aspersión</h1>
-    <label>Altura de subida (h1) [m]: <input type="number" id="h1" value="2"></label>
-    <label>Longitud horizontal (L) [m]: <input type="number" id="L" value="3"></label>
-    <label>Altura de bajada (h2) [m]: <input type="number" id="h2" value="1"></label>
-    <label>Diámetro interno de tubería (D) [mm]: <input type="number" id="D" value="25"></label>
-    <label>Caudal (Q) [L/s]: <input type="number" id="Q" value="1"></label>
+    <label>Altura de subida (h1) [m]: <input type="number" id="h1" value="2" step="0.1"></label>
+    <label>Longitud horizontal (L) [m]: <input type="number" id="L" value="3" step="0.1"></label>
+    <label>Altura de bajada (h2) [m]: <input type="number" id="h2" value="1" step="0.1"></label>
+    <label>Rugosidad Absoluta (ε) [mm]: <input type="number" id="rugosidad" value="0.045" step="0.001"></label>
 
     <button onclick="calcularModelo()">Calcular Sistema</button>
     <canvas id="grafico" width="600" height="300"></canvas>
     <div class="results" id="resultados"></div>
+    <div class="detail" id="detalles"></div>
   </div>
 
   <script>
     function calcularModelo() {
+      // Parámetros base
       const h1 = parseFloat(document.getElementById("h1").value);
       const h2 = parseFloat(document.getElementById("h2").value);
       const L = parseFloat(document.getElementById("L").value);
-      const Dmm = parseFloat(document.getElementById("D").value);
-      const Qls = parseFloat(document.getElementById("Q").value);
+      const rugosidad = parseFloat(document.getElementById("rugosidad").value) / 1000; // convertir a metros
 
-      const D = Dmm / 1000; // m
-      const Q = Qls / 1000; // m3/s
+      // Constantes físicas
+      const g = 9.81;        // m/s²
+      const rho = 1000;      // kg/m³ (agua)
+      const mu = 1e-3;       // Pa·s (viscosidad dinámica del agua a 20°C)
+      const v = 1.5;         // m/s velocidad deseada
 
-      const A = Math.PI * Math.pow(D / 2, 2); // m2
-      const v = Q / A; // velocidad m/s
+      // Cálculo de diámetro y área
+      const D = Math.sqrt((4 * 0.001) / (Math.PI * v)); // m
+      const A = Math.PI * Math.pow(D / 2, 2);
 
-      const g = 9.81;
-      const rho = 1000; // kg/m3 para agua
-      const nu = 1e-6; // m2/s viscosidad cinemática agua
+      // Cálculo de caudal (Q)
+      const Q = v * A;
 
-      const Re = (v * D) / nu;
-      const flujo = Re < 2000 ? "Laminar" : Re < 4000 ? "Transicional" : "Turbulento";
-      const f = flujo === "Laminar" ? 64 / Re : 0.03; // estimado
+      // Número de Reynolds
+      const Re = (rho * v * D) / mu;
 
-      const Hf = f * (L / D) * (v * v) / (2 * g); // pérdida de carga
+      // Clasificación de flujo
+      let flujo;
+      if (Re < 2000) flujo = "Laminar";
+      else if (Re < 4000) flujo = "Transicional";
+      else flujo = "Turbulento";
+
+      // Factor de fricción
+      let f;
+      if (flujo === "Laminar") {
+        f = 64 / Re;
+      } else {
+        // Aproximación de Swamee-Jain para flujo turbulento
+        const rugosidadRelativa = rugosidad / D;
+        f = 0.25 / Math.pow(
+          Math.log10(
+            (rugosidadRelativa / 3.7) + 
+            (5.74 / Math.pow(Re, 0.9))
+          ), 
+          2
+        );
+      }
+
+      // Pérdida de carga (Darcy-Weisbach)
+      const Hf = f * (L / D) * (Math.pow(v, 2) / (2 * g));
+
+      // Altura total
       const altura_total = h1 - h2 + Hf;
-      const presion_bomba = altura_total * rho * g / 100000; // en bar
 
+      // Presión de la bomba
+      const presion_bomba = altura_total * rho * g / 100000; // bar
+
+      // Potencia de la bomba
+      const potencia_watts = (rho * g * Q * altura_total) / 0.65;
+      const potencia_hp = potencia_watts / 745.7;
+
+      // Diámetro comercial
+      const Dmm = D * 1000;
+      const diametrosComerciales = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8, 10, 12];
+      const Dpulg = diametrosComerciales.find(d => d >= Dmm / 25.4) || diametrosComerciales[diametrosComerciales.length - 1];
+
+      // Mostrar resultados
       document.getElementById("resultados").innerHTML = `
         <h3>Recomendaciones para el Instalador:</h3>
         <ul>
-          <li><strong>Use tubería de diámetro interno:</strong> ${Dmm} mm</li>
-          <li><strong>Área interna del tubo:</strong> ${A.toFixed(5)} m² (permite buen paso del fluido)</li>
-          <li><strong>Fluido circulará a:</strong> ${v.toFixed(2)} m/s (velocidad segura)</li>
-          <li><strong>Longitud horizontal:</strong> ${L} m</li>
-          <li><strong>Altura de subida:</strong> ${h1} m</li>
-          <li><strong>Altura de bajada:</strong> ${h2} m</li>
-          <li><strong>Altura total que debe vencer la bomba:</strong> ${altura_total.toFixed(2)} m</li>
-          <li><strong>Presión mínima que debe soportar la bomba:</strong> ${presion_bomba.toFixed(2)} bar</li>
+          <li><strong>Tubería de diámetro interno:</strong> ${Dpulg.toFixed(2)}" (pulgadas)</li>
+          <li><strong>Velocidad del fluido:</strong> ${v.toFixed(2)} m/s</li>
+          <li><strong>Altura total a vencer:</strong> ${altura_total.toFixed(2)} m</li>
+          <li><strong>Presión de bomba:</strong> ${presion_bomba.toFixed(2)} bar</li>
+          <li><strong>Potencia estimada:</strong> ${potencia_hp.toFixed(2)} HP</li>
           <li><strong>Tipo de flujo:</strong> ${flujo}</li>
         </ul>
       `;
 
+      // Mostrar detalles técnicos
+      document.getElementById("detalles").innerHTML = `
+        <h3>Detalles Técnicos</h3>
+        <p><strong>Número de Reynolds:</strong> ${Re.toFixed(2)}</p>
+        <p><strong>Factor de Fricción:</strong> ${f.toFixed(4)}</p>
+        <p><strong>Pérdida de Carga:</strong> ${Hf.toFixed(2)} m</p>
+        <p><strong>Diámetro Calculado:</strong> ${Dmm.toFixed(2)} mm</p>
+      `;
+
+      // Dibujar esquema
       dibujarEsquema(h1, L, h2, Dmm);
     }
 
@@ -127,12 +179,19 @@
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const escala = 40; // pixeles por metro
+      const maxInput = Math.max(h1, h2, L);
+      const maxDimension = Math.max(10, maxInput);
+      const canvasHeight = 300;
+      const canvasWidth = 600;
+      const verticalSpace = canvasHeight - 60;
+      const escalaY = verticalSpace / maxDimension;
+      const escalaX = (canvasWidth - 160) / maxDimension;
+
       const baseX = 80;
       const baseY = canvas.height - 30;
 
       ctx.strokeStyle = "#2a8";
-      ctx.lineWidth = Math.max(2, Dmm / 10); // ancho proporcional al diámetro
+      ctx.lineWidth = Math.max(2, Dmm / 10);
 
       // Bomba
       ctx.beginPath();
@@ -144,21 +203,21 @@
       ctx.fillStyle = "#2a8";
       ctx.fill();
 
-      // Tubería (esquema)
+      // Tubería
       ctx.beginPath();
       ctx.moveTo(baseX, baseY);
-      ctx.lineTo(baseX, baseY - h1 * escala);
-      ctx.lineTo(baseX + L * escala, baseY - h1 * escala);
-      ctx.lineTo(baseX + L * escala, baseY - (h1 - h2) * escala);
+      ctx.lineTo(baseX, baseY - h1 * escalaY);
+      ctx.lineTo(baseX + L * escalaX, baseY - h1 * escalaY);
+      ctx.lineTo(baseX + L * escalaX, baseY - (h1 - h2) * escalaY);
       ctx.stroke();
 
-      // Texto descriptivo
+      // Etiquetas
       ctx.fillStyle = "#000";
       ctx.font = "14px Segoe UI";
       ctx.fillText("Bomba", baseX - 18, baseY - 25);
-      ctx.fillText("↑ h1", baseX + 5, baseY - h1 * escala / 2);
-      ctx.fillText("→ L", baseX + L * escala / 2, baseY - h1 * escala - 5);
-      ctx.fillText("↓ h2", baseX + L * escala + 5, baseY - h1 * escala + h2 * escala / 2);
+      ctx.fillText("↑ h1", baseX + 5, baseY - h1 * escalaY / 2);
+      ctx.fillText("→ L", baseX + L * escalaX / 2, baseY - h1 * escalaY - 5);
+      ctx.fillText("↓ h2", baseX + L * escalaX + 5, baseY - h1 * escalaY + h2 * escalaY / 2);
     }
   </script>
 </body>
